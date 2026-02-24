@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Phone Piano">
+  <title>Phone Piano</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0; padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #111827;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    /* ── Tap-to-start splash ── */
+    #splash {
+      position: fixed;
+      inset: 0;
+      background: #111827;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 999;
+      cursor: pointer;
+    }
+    #splash .piano-icon { font-size: 4rem; }
+    #splash h1 {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 2rem;
+      font-weight: 700;
+      color: #c7d2fe;
+      letter-spacing: 0.05em;
+    }
+    #splash p {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 1.1rem;
+      color: #6b7280;
+    }
+    #splash .tap-btn {
+      margin-top: 10px;
+      padding: 16px 40px;
+      background: #4f46e5;
+      border-radius: 50px;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: white;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Main app ── */
+    #app {
+      position: fixed;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #111827;
+    }
+
+    #title {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #6366f1;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    /* ── Piano container ── */
+    #piano-wrap {
+      position: relative;
+      /* Size set by JS based on screen dimensions */
+    }
+
+    /* ── White keys ── */
+    #white-row {
+      display: -webkit-flex;
+      display: flex;
+      width: 100%;
+      height: 100%;
+    }
+
+    .wk {
+      -webkit-flex: 1;
+      flex: 1;
+      background: -webkit-linear-gradient(top, #f5f3ee, #ffffff 60%, #ede9e0);
+      background: linear-gradient(180deg, #f5f3ee, #ffffff 60%, #ede9e0);
+      border-right: 1px solid #aaa;
+      border-bottom: 2px solid #888;
+      border-radius: 0 0 6px 6px;
+      position: relative;
+      cursor: pointer;
+    }
+    .wk:first-child { border-left: 1px solid #aaa; }
+
+    .wk.active {
+      background: -webkit-linear-gradient(top, #bfdbfe, #93c5fd 50%, #bfdbfe);
+      background: linear-gradient(180deg, #bfdbfe, #93c5fd 50%, #bfdbfe);
+    }
+
+    .wk-label {
+      position: absolute;
+      bottom: 6px;
+      left: 0; right: 0;
+      text-align: center;
+      font-family: -apple-system, sans-serif;
+      font-size: 10px;
+      color: #888;
+      pointer-events: none;
+    }
+
+    /* ── Black keys ── */
+    .bk {
+      position: absolute;
+      top: 0;
+      background: -webkit-linear-gradient(top, #1e1e1e, #3a3a3a 65%, #1e1e1e);
+      background: linear-gradient(180deg, #1e1e1e, #3a3a3a 65%, #1e1e1e);
+      border-radius: 0 0 5px 5px;
+      cursor: pointer;
+      z-index: 2;
+      -webkit-box-shadow: 2px 5px 10px rgba(0,0,0,0.7), inset 0 -3px 4px rgba(255,255,255,0.08);
+      box-shadow: 2px 5px 10px rgba(0,0,0,0.7), inset 0 -3px 4px rgba(255,255,255,0.08);
+    }
+    .bk.active {
+      background: -webkit-linear-gradient(top, #312e81, #4338ca 60%, #312e81);
+      background: linear-gradient(180deg, #312e81, #4338ca 60%, #312e81);
+    }
+
+    /* ── Note display ── */
+    #note-row {
+      margin-top: 10px;
+      height: 28px;
+      display: -webkit-flex;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    #note-name {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #818cf8;
+      min-width: 40px;
+      text-align: center;
+    }
+    #note-hz {
+      font-size: 0.75rem;
+      color: #4f46e5;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* ── Close button ── */
+    #close-btn {
+      position: fixed;
+      top: 12px; right: 12px;
+      width: 36px; height: 36px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 50%;
+      color: rgba(255,255,255,0.6);
+      font-size: 0.9rem;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 50;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Tap to Start splash -->
+<div id="splash">
+  <span class="piano-icon">🎹</span>
+  <h1>Phone Piano</h1>
+  <p>One octave · C4 to C5</p>
+  <div class="tap-btn">Tap to Start</div>
+</div>
+
+<!-- Piano app (shown after tap) -->
+<div id="app">
+  <div id="title">🎹 Phone Piano</div>
+  <div id="piano-wrap">
+    <div id="white-row"></div>
+  </div>
+  <div id="note-row">
+    <span id="note-name"></span>
+    <span id="note-hz"></span>
+  </div>
+</div>
+
+<button id="close-btn">✕</button>
+
+<script>
+// ─── Notes ───────────────────────────────
+var WHITE = [
+  { note:'C4',  freq:261.63 },
+  { note:'D4',  freq:293.66 },
+  { note:'E4',  freq:329.63 },
+  { note:'F4',  freq:349.23 },
+  { note:'G4',  freq:392.00 },
+  { note:'A4',  freq:440.00 },
+  { note:'B4',  freq:493.88 },
+  { note:'C5',  freq:523.25 }
+];
+
+// leftPct = left edge of black key as % of piano width
+// White key width = 100/8 = 12.5%  →  black key width = 8%
+// Black key centre = N * 12.5%  →  left = centre - 4%
+var BLACK = [
+  { note:'C♯4', freq:277.18, centre:12.5 },
+  { note:'D♯4', freq:311.13, centre:25.0 },
+  { note:'F♯4', freq:369.99, centre:50.0 },
+  { note:'G♯4', freq:415.30, centre:62.5 },
+  { note:'A♯4', freq:466.16, centre:75.0 }
+];
+
+// ─── Build DOM ───────────────────────────
+var whiteRow  = document.getElementById('white-row');
+var pianoWrap = document.getElementById('piano-wrap');
+
+WHITE.forEach(function(k) {
+  var el = document.createElement('div');
+  el.className = 'wk';
+  el.dataset.note = k.note;
+  el.dataset.freq = k.freq;
+  var lbl = document.createElement('span');
+  lbl.className = 'wk-label';
+  lbl.textContent = k.note;
+  el.appendChild(lbl);
+  whiteRow.appendChild(el);
+});
+
+BLACK.forEach(function(k) {
+  var el = document.createElement('div');
+  el.className = 'bk';
+  el.dataset.note = k.note;
+  el.dataset.freq = k.freq;
+  // position set after layout in sizePiano()
+  el._centre = k.centre;
+  pianoWrap.appendChild(el);
+});
+
+// ─── Size piano to screen ────────────────
+function sizePiano() {
+  var W = window.innerWidth;
+  var H = window.innerHeight;
+  var isLandscape = W > H;
+
+  // Piano dimensions
+  var pianoW = Math.round(W * 0.96);
+  var pianoH = isLandscape
+    ? Math.round(H * 0.70)
+    : Math.round(H * 0.42);
+
+  pianoWrap.style.width  = pianoW + 'px';
+  pianoWrap.style.height = pianoH + 'px';
+  whiteRow.style.width   = pianoW + 'px';
+  whiteRow.style.height  = pianoH + 'px';
+
+  // Size black keys relative to piano dimensions
+  var bkW = Math.round(pianoW / 8 * 0.65);
+  var bkH = Math.round(pianoH * 0.62);
+
+  var bks = pianoWrap.querySelectorAll('.bk');
+  bks.forEach(function(el) {
+    el.style.width  = bkW + 'px';
+    el.style.height = bkH + 'px';
+    el.style.left   = Math.round(el._centre / 100 * pianoW - bkW / 2) + 'px';
+  });
+}
+
+window.addEventListener('resize', sizePiano);
+window.addEventListener('orientationchange', function() {
+  setTimeout(sizePiano, 300);
+});
+
+// ─── Audio ───────────────────────────────
+var audioCtx = null;
+var playing  = {};
+
+function getCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playNote(freq, note) {
+  if (playing[note]) return;
+  var ac  = getCtx();
+  var now = ac.currentTime;
+
+  var env = ac.createGain();
+  env.gain.setValueAtTime(0, now);
+  env.gain.linearRampToValueAtTime(0.45, now + 0.008);
+  env.gain.exponentialRampToValueAtTime(0.14, now + 0.35);
+
+  var lpf = ac.createBiquadFilter();
+  lpf.type = 'lowpass';
+  lpf.frequency.value = freq * 7;
+  env.connect(lpf);
+  lpf.connect(ac.destination);
+
+  var specs = [
+    { type:'triangle', mult:1, g:0.55 },
+    { type:'sine',     mult:2, g:0.28 },
+    { type:'sine',     mult:3, g:0.10 },
+    { type:'sine',     mult:4, g:0.05 }
+  ];
+
+  var oscs = specs.map(function(s) {
+    var gain = ac.createGain();
+    gain.gain.value = s.g;
+    var osc = ac.createOscillator();
+    osc.type = s.type;
+    osc.frequency.value = freq * s.mult;
+    osc.connect(gain);
+    gain.connect(env);
+    osc.start();
+    return osc;
+  });
+
+  playing[note] = { oscs:oscs, env:env };
+}
+
+function stopNote(note) {
+  if (!playing[note]) return;
+  var ac  = getCtx();
+  var now = ac.currentTime;
+  var p   = playing[note];
+
+  p.env.gain.cancelScheduledValues(now);
+  p.env.gain.setValueAtTime(p.env.gain.value, now);
+  p.env.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+
+  setTimeout(function() {
+    p.oscs.forEach(function(o) { try { o.stop(); } catch(e) {} });
+    p.env.disconnect();
+  }, 650);
+
+  delete playing[note];
+}
+
+// ─── Key press / release ─────────────────
+var noteNameEl = document.getElementById('note-name');
+var noteHzEl   = document.getElementById('note-hz');
+
+function pressKey(el) {
+  if (!el || el._pressed) return;
+  el._pressed = true;
+  el.classList.add('active');
+  playNote(parseFloat(el.dataset.freq), el.dataset.note);
+  noteNameEl.textContent = el.dataset.note;
+  noteHzEl.textContent   = parseFloat(el.dataset.freq).toFixed(1) + ' Hz';
+}
+
+function liftKey(el) {
+  if (!el || !el._pressed) return;
+  el._pressed = false;
+  el.classList.remove('active');
+  stopNote(el.dataset.note);
+  noteNameEl.textContent = '';
+  noteHzEl.textContent   = '';
+}
+
+function keyAt(x, y) {
+  var els = document.elementsFromPoint(x, y);
+  for (var i = 0; i < els.length; i++) {
+    if (els[i].classList.contains('bk') ||
+        els[i].classList.contains('wk')) return els[i];
+  }
+  return null;
+}
+
+// ─── Touch events ─────────────────────────
+var touchMap = {};
+
+pianoWrap.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  for (var i = 0; i < e.changedTouches.length; i++) {
+    var t  = e.changedTouches[i];
+    var el = keyAt(t.clientX, t.clientY);
+    if (el) { pressKey(el); touchMap[t.identifier] = el; }
+  }
+}, { passive: false });
+
+pianoWrap.addEventListener('touchmove', function(e) {
+  e.preventDefault();
+  for (var i = 0; i < e.changedTouches.length; i++) {
+    var t     = e.changedTouches[i];
+    var newEl = keyAt(t.clientX, t.clientY);
+    var oldEl = touchMap[t.identifier];
+    if (newEl !== oldEl) {
+      if (oldEl) liftKey(oldEl);
+      if (newEl) { pressKey(newEl); touchMap[t.identifier] = newEl; }
+      else       { delete touchMap[t.identifier]; }
+    }
+  }
+}, { passive: false });
+
+pianoWrap.addEventListener('touchend', function(e) {
+  e.preventDefault();
+  for (var i = 0; i < e.changedTouches.length; i++) {
+    var t = e.changedTouches[i];
+    if (touchMap[t.identifier]) { liftKey(touchMap[t.identifier]); delete touchMap[t.identifier]; }
+  }
+}, { passive: false });
+
+pianoWrap.addEventListener('touchcancel', function(e) {
+  e.preventDefault();
+  for (var i = 0; i < e.changedTouches.length; i++) {
+    var t = e.changedTouches[i];
+    if (touchMap[t.identifier]) { liftKey(touchMap[t.identifier]); delete touchMap[t.identifier]; }
+  }
+}, { passive: false });
+
+// ─── Mouse (desktop) ─────────────────────
+var mDown = false, mKey = null;
+
+pianoWrap.addEventListener('mousedown', function(e) {
+  mDown = true;
+  var el = keyAt(e.clientX, e.clientY);
+  if (el) { pressKey(el); mKey = el; }
+});
+document.addEventListener('mousemove', function(e) {
+  if (!mDown) return;
+  var el = keyAt(e.clientX, e.clientY);
+  if (el !== mKey) { if (mKey) liftKey(mKey); if (el) pressKey(el); mKey = el || null; }
+});
+document.addEventListener('mouseup', function() {
+  if (mKey) { liftKey(mKey); mKey = null; } mDown = false;
+});
+
+// ─── Splash → Start ──────────────────────
+document.getElementById('splash').addEventListener('click', function() {
+  // Unlock AudioContext with user gesture
+  var ac = getCtx();
+
+  document.getElementById('splash').style.display = 'none';
+  var app = document.getElementById('app');
+  app.style.display = 'flex';
+
+  var closeBtn = document.getElementById('close-btn');
+  closeBtn.style.display = 'flex';
+
+  sizePiano();
+});
+
+document.getElementById('close-btn').addEventListener('click', function() {
+  window.close();
+  setTimeout(function() { window.location.href = 'about:blank'; }, 200);
+});
+</script>
+</body>
+</html>
