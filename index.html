@@ -86,7 +86,6 @@
     /* ── Piano container ── */
     #piano-wrap {
       position: relative;
-      /* Size set by JS based on screen dimensions */
     }
 
     /* ── White keys ── */
@@ -141,6 +140,38 @@
     .bk.active {
       background: -webkit-linear-gradient(top, #312e81, #4338ca 60%, #312e81);
       background: linear-gradient(180deg, #312e81, #4338ca 60%, #312e81);
+    }
+
+    /* ── Instrument selector ── */
+    #instrument-row {
+      display: -webkit-flex;
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      margin-bottom: 2px;
+    }
+
+    .inst-btn {
+      padding: 10px 18px;
+      min-height: 44px;
+      border: 1.5px solid #374151;
+      border-radius: 22px;
+      background: #1f2937;
+      color: #9ca3af;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .inst-btn.active {
+      background: #4f46e5;
+      border-color: #6366f1;
+      color: #ffffff;
     }
 
     /* ── Note display ── */
@@ -201,6 +232,14 @@
   <div id="piano-wrap">
     <div id="white-row"></div>
   </div>
+
+  <!-- Instrument selector -->
+  <div id="instrument-row">
+    <button class="inst-btn active" data-inst="piano">🎹 Piano</button>
+    <button class="inst-btn" data-inst="epiano">🎸 E. Piano</button>
+    <button class="inst-btn" data-inst="glock">🔔 Glockenspiel</button>
+  </div>
+
   <div id="note-row">
     <span id="note-name"></span>
     <span id="note-hz"></span>
@@ -222,9 +261,6 @@ var WHITE = [
   { note:'C5',  freq:523.25 }
 ];
 
-// leftPct = left edge of black key as % of piano width
-// White key width = 100/8 = 12.5%  →  black key width = 8%
-// Black key centre = N * 12.5%  →  left = centre - 4%
 var BLACK = [
   { note:'C♯4', freq:277.18, centre:12.5 },
   { note:'D♯4', freq:311.13, centre:25.0 },
@@ -232,6 +268,9 @@ var BLACK = [
   { note:'G♯4', freq:415.30, centre:62.5 },
   { note:'A♯4', freq:466.16, centre:75.0 }
 ];
+
+// ─── Current instrument ───────────────────
+var currentInstrument = 'piano';
 
 // ─── Build DOM ───────────────────────────
 var whiteRow  = document.getElementById('white-row');
@@ -254,7 +293,6 @@ BLACK.forEach(function(k) {
   el.className = 'bk';
   el.dataset.note = k.note;
   el.dataset.freq = k.freq;
-  // position set after layout in sizePiano()
   el._centre = k.centre;
   pianoWrap.appendChild(el);
 });
@@ -265,7 +303,6 @@ function sizePiano() {
   var H = window.innerHeight;
   var isLandscape = W > H;
 
-  // Piano dimensions
   var pianoW = Math.round(W * 0.96);
   var pianoH = isLandscape
     ? Math.round(H * 0.70)
@@ -276,7 +313,6 @@ function sizePiano() {
   whiteRow.style.width   = pianoW + 'px';
   whiteRow.style.height  = pianoH + 'px';
 
-  // Size black keys relative to piano dimensions
   var bkW = Math.round(pianoW / 8 * 0.65);
   var bkH = Math.round(pianoH * 0.62);
 
@@ -305,8 +341,8 @@ function getCtx() {
   return audioCtx;
 }
 
-function playNote(freq, note) {
-  if (playing[note]) return;
+// ── Piano synthesis ──
+function playPiano(freq, note) {
   var ac  = getCtx();
   var now = ac.currentTime;
 
@@ -340,7 +376,112 @@ function playNote(freq, note) {
     return osc;
   });
 
-  playing[note] = { oscs:oscs, env:env };
+  playing[note] = { oscs: oscs, env: env, nodes: [lpf] };
+}
+
+// ── Electric Piano (Rhodes FM) synthesis ──
+function playEPiano(freq, note) {
+  var ac  = getCtx();
+  var now = ac.currentTime;
+
+  // Tremolo LFO
+  var lfo = ac.createOscillator();
+  lfo.frequency.value = 4.0;
+  var lfoGain = ac.createGain();
+  lfoGain.gain.value = 0.12;
+  lfo.connect(lfoGain);
+
+  // Master envelope
+  var env = ac.createGain();
+  env.gain.setValueAtTime(0, now);
+  env.gain.linearRampToValueAtTime(0.5, now + 0.015);
+  env.gain.exponentialRampToValueAtTime(0.22, now + 0.4);
+  env.gain.exponentialRampToValueAtTime(0.12, now + 1.2);
+
+  // Tremolo modulates master gain
+  lfoGain.connect(env.gain);
+
+  // FM: modulator
+  var modFreq = freq * 3.5;
+  var modOsc  = ac.createOscillator();
+  modOsc.type = 'sine';
+  modOsc.frequency.value = modFreq;
+
+  var modEnv = ac.createGain();
+  modEnv.gain.setValueAtTime(freq * 8, now);
+  modEnv.gain.exponentialRampToValueAtTime(freq * 1.5, now + 0.3);
+  modEnv.gain.exponentialRampToValueAtTime(freq * 0.5, now + 1.0);
+  modOsc.connect(modEnv);
+
+  // FM: carrier
+  var carrier = ac.createOscillator();
+  carrier.type = 'sine';
+  carrier.frequency.value = freq;
+  modEnv.connect(carrier.frequency);
+
+  // Soft tone shaping
+  var lpf = ac.createBiquadFilter();
+  lpf.type = 'lowpass';
+  lpf.frequency.value = freq * 5;
+  lpf.Q.value = 0.8;
+
+  carrier.connect(env);
+  env.connect(lpf);
+  lpf.connect(ac.destination);
+
+  lfo.start(now);
+  modOsc.start(now);
+  carrier.start(now);
+
+  playing[note] = { oscs: [lfo, modOsc, carrier], env: env, nodes: [lfoGain, modEnv, lpf] };
+}
+
+// ── Glockenspiel synthesis ──
+function playGlockenspiel(freq, note) {
+  var ac  = getCtx();
+  var now = ac.currentTime;
+
+  // Inharmonic partial ratios characteristic of struck metal bars
+  var partials = [
+    { ratio: 1.000, gain: 0.60 },
+    { ratio: 2.756, gain: 0.25 },
+    { ratio: 5.404, gain: 0.10 },
+    { ratio: 8.933, gain: 0.05 }
+  ];
+
+  var master = ac.createGain();
+  master.gain.value = 1.0;
+  master.connect(ac.destination);
+
+  var oscs = partials.map(function(p) {
+    var osc = ac.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq * p.ratio;
+
+    var g = ac.createGain();
+    // Very fast attack, long exponential decay — bell character
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(p.gain, now + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 2.5);
+
+    osc.connect(g);
+    g.connect(master);
+    osc.start(now);
+    return osc;
+  });
+
+  // Dummy env node so stopNote can release gracefully
+  var env = ac.createGain();
+  env.gain.value = 1.0;
+
+  playing[note] = { oscs: oscs, env: env, nodes: [master], decayOnly: true };
+}
+
+function playNote(freq, note) {
+  if (playing[note]) return;
+  if (currentInstrument === 'piano')  { playPiano(freq, note); }
+  else if (currentInstrument === 'epiano') { playEPiano(freq, note); }
+  else if (currentInstrument === 'glock')  { playGlockenspiel(freq, note); }
 }
 
 function stopNote(note) {
@@ -349,17 +490,46 @@ function stopNote(note) {
   var now = ac.currentTime;
   var p   = playing[note];
 
-  p.env.gain.cancelScheduledValues(now);
-  p.env.gain.setValueAtTime(p.env.gain.value, now);
-  p.env.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
-
-  setTimeout(function() {
-    p.oscs.forEach(function(o) { try { o.stop(); } catch(e) {} });
-    p.env.disconnect();
-  }, 650);
+  if (p.decayOnly) {
+    // Glockenspiel — let it ring; just schedule a gentle fade
+    // The partials are already decaying; stop oscillators after decay window
+    setTimeout(function() {
+      p.oscs.forEach(function(o) { try { o.stop(); } catch(e) {} });
+      if (p.nodes) p.nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} });
+    }, 2600);
+  } else {
+    p.env.gain.cancelScheduledValues(now);
+    p.env.gain.setValueAtTime(p.env.gain.value, now);
+    p.env.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+    setTimeout(function() {
+      p.oscs.forEach(function(o) { try { o.stop(); } catch(e) {} });
+      if (p.nodes) p.nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} });
+      p.env.disconnect();
+    }, 700);
+  }
 
   delete playing[note];
 }
+
+function stopAllNotes() {
+  Object.keys(playing).forEach(function(note) { stopNote(note); });
+}
+
+// ─── Instrument selector ─────────────────
+var instBtns = document.querySelectorAll('.inst-btn');
+instBtns.forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    stopAllNotes();
+    // Lift all visually pressed keys
+    document.querySelectorAll('.wk.active, .bk.active').forEach(function(k) {
+      k.classList.remove('active');
+      k._pressed = false;
+    });
+    currentInstrument = btn.dataset.inst;
+    instBtns.forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+  });
+});
 
 // ─── Key press / release ─────────────────
 var noteNameEl = document.getElementById('note-name');
@@ -430,7 +600,7 @@ pianoWrap.addEventListener('touchcancel', function(e) {
   e.preventDefault();
   for (var i = 0; i < e.changedTouches.length; i++) {
     var t = e.changedTouches[i];
-    if (touchMap[t.identifier]) { liftKey(touchMap[t.identifier]); delete touchMap[t.identifier]; }
+    if (touchMap[t.identifier]) { liftKey(touchMap[t.identifier]); delete touchMap[t.identifier];}
   }
 }, { passive: false });
 
@@ -453,7 +623,6 @@ document.addEventListener('mouseup', function() {
 
 // ─── Splash → Start ──────────────────────
 document.getElementById('splash').addEventListener('click', function() {
-  // Unlock AudioContext with user gesture
   var ac = getCtx();
 
   document.getElementById('splash').style.display = 'none';
